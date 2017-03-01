@@ -1,0 +1,666 @@
+#+TITLE:                Koans
+#+AUTHOR:               Henrik Kjerringvåg
+#+EMAIL:                hekj@bdo.no
+#+EXPORT_EXCLUDE_TAGS:  noexport
+#+LANGUAGE:             en
+
+* Up and Running
+  
+  Before we can create awesome-sauce with Clojure, we need an
+  environment set up. The fastest way to get there on Windows is by
+  using [[https://chocolatey.org][choco]]. Simply run the two commands below with their following
+  wizards and you should be good.
+
+  #+BEGIN_SRC shell
+  iwr https://chocolatey.org/install.ps1 -UseBasicParsing | iex
+  choco install lein
+  #+END_SRC
+
+  /When installing [[http://leiningen.org][Leiningen]], we also get the =JVM= which is required to
+  get any serious work done in Clojure. At this point you could run/
+
+  #+BEGIN_SRC shell
+  lein repl
+  #+END_SRC
+
+  And start interacting with Clojure through a Read-Eval-Print-Loop.
+
+* Some Terminology
+
+I tend to say Clojure, but often times what I actually mean is
+ClojureScript. The difference is that Clojure run on the Java Virtual
+Machine or JVM in short, whilst ClojureScript run in a
+JavaScript-Engine. There are very few differences between the two
+languages though, so you can mostly run your code in both lands. You
+can do so by using the file-extension =cljc=, which stands for
+Clojure-Common. One advantage of doing so, is that you can run all of
+your tests on the JVM with somewhat better performance than you would
+get, say in a browser.  For this session, we will stick to the regular
+cljs-format for the sake of simplicity.  We will also be using
+=figwheel= which will hot-load our code while keeping our state in-tact
+and =Re-frame= which is a small framework for state-handling that
+depends on =Reagent= which is a thin layer on-top of =React=.
+
+* Getting down to Business
+  
+At this point of the session, we will boot up =figwheel= and touch upon
+some code. 
+
+#+BEGIN_SRC shell
+lein figwheel dev
+#+END_SRC
+
+I've strapped in the =nightlight= editor for convenience, so
+we can just get started without tweaking any particular IDE.
+
+#+BEGIN_SRC shell
+lein nightlight --port 4000
+#+END_SRC
+
+What follows beyond this line is the actual code, with some very light
+reading :)
+
+* Source
+
+:PROPERTIES:
+:header-args: :mkdirp yes :noweb yes :exports none :results silent
+:END:
+
+** Core
+
+It's idiomatic clojure, to name your starting-point =core=. This is
+where you bring in the thunk of all your dependency-branches and
+usually where you initialize the application itself.
+   
+#+BEGIN_SRC clojure :tangle src/cljs/koans/core.cljs
+(ns koans.core
+  (:require [reagent.core :as reagent]
+            [re-frame.core :as re-frame]
+            [koans.events]
+            [koans.subs]
+            [koans.routes :as routes]
+            [koans.views :as views]
+            [re-frisk.core :refer [enable-re-frisk!]]
+            [nightlight.repl-server]
+            ;; [cljsjs.react-highlight]
+            ))
+
+(def debug?
+  ^boolean js/goog.DEBUG)
+
+(defn dev-setup []
+  (when debug?
+    (enable-console-print!)
+    (enable-re-frisk!)
+    (println "dev mode")))
+
+(defn mount-root []
+  (re-frame/clear-subscription-cache!)
+  (reagent/render [views/main-panel]
+                  (.getElementById js/document "app")))
+
+(defn ^:export init []
+  (routes/app-routes)
+  (re-frame/dispatch-sync [:initialize-db])
+  (dev-setup)
+  (mount-root))
+#+END_SRC
+
+** Application State
+
+#+BEGIN_SRC clojure :tangle src/cljs/koans/state.cljs
+(ns koans.state
+  (:require [clojure.test.check.generators :as gen]
+            [clojure.spec :as s]))
+
+(def default-state
+  {:assertions      {}
+   :data-structures {}})
+#+END_SRC
+
+** Routes
+
+#+BEGIN_SRC clojure :tangle src/cljs/koans/routes.cljs
+(ns koans.routes
+  (:require-macros [secretary.core :refer [defroute]])
+  (:import goog.History)
+  (:require [secretary.core :as secretary]
+            [goog.events :as events]
+            [goog.history.EventType :as EventType]
+            [re-frame.core :as re-frame]))
+
+(defn hook-browser-navigation! []
+  (doto (History.)
+    (events/listen
+     EventType/NAVIGATE
+     (fn [event]
+       (secretary/dispatch! (.-token event))))
+    (.setEnabled true)))
+
+(defn app-routes []
+
+  (secretary/set-config! :prefix "#")
+
+  (defroute "/" []
+    (re-frame/dispatch [:set-active-panel :koans-panel]))
+
+  (hook-browser-navigation!))
+#+END_SRC
+
+** Utils
+
+#+BEGIN_SRC clojure :tangle src/cljs/koans/utils.cljs
+(ns koans.utils
+  (:require [reagent.core :as reagent]))
+
+(defn log [& args]
+  (do (apply js/console.log args)
+      args))
+
+;; (def highlight
+;;   (reagent/adapt-react-class js/Highlight))
+#+END_SRC
+
+** Views
+
+#+BEGIN_SRC clojure :tangle src/cljs/koans/views.cljs
+(ns koans.views
+  (:require [re-frame.core :as re-frame :refer [subscribe dispatch]]
+            [koans.koans :as koans]
+            [koans.utils :as u]))
+
+(defn- footer []
+  [:footer.flex.row.align-center.justify-center
+   (str "It's on github   ")
+   [:a {:href "//github.com/bdo-labs/koans"} [:i.ion-social-github]]
+   (str "   go grab it :)")])
+
+(defn- koans-panel []
+  (let [percent-completed (subscribe [:percent-completed])]
+    (fn []
+      [:div.container
+       [:div.completed {:style {:width (str @percent-completed "%")}}]
+       [:header.flex.column
+        [:div.text-width
+         [:h1 "Clojure " [:strong "Koans"]]
+         [:p (str "A koan is a riddle or puzzle that Zen Buddhists use during "
+                  "meditation to help them unravel greater truths about the world"
+                  " and about themselves. Zen masters have been testing their"
+                  " students with these stories, questions, or phrases for centuries.")]
+         [:p (str "For quick-reference to how these Koans are solved, I recommend having a look at ")
+          [:a {:href "//cljs.info"} "cljs.info"]]
+         [:em (str "Ohh! And just replace `:_` with whatever value you think is correct")]]]
+       [koans/assertions]
+       [koans/data-structures]
+       [footer]])))
+
+;; main
+
+(defn- panels [panel-name]
+  (case panel-name
+    :koans-panel [koans-panel]
+    [:div]))
+
+(defn main-panel []
+  (let [active-panel (subscribe [:active-panel])]
+    (fn []
+      [panels @active-panel])))
+#+END_SRC
+
+** Koans
+
+#+BEGIN_SRC clojure :tangle src/cljs/koans/koans.cljs
+(ns koans.koans
+  (:require [re-frame.core :as re-frame :refer [subscribe dispatch]]
+            [cljs.js :as cljs]
+            [koans.utils :as u]))
+
+(defonce compiler-state
+  (cljs/empty-state))
+
+(defn- eval [input]
+  (cljs/eval-str compiler-state (str input) nil
+                 {:eval cljs/js-eval} #(:value %)))
+
+(defn- koan [intro code assert]
+  (fn [intro code]
+    (let [v (if-not (re-matches #"_" (str code)) (eval code) false)]
+      (assert intro v)
+      [:div.koan
+       [:p [:small intro]]
+       [:div.code {:class (if v "success" "")}
+        ;; [:pre [:code [u/highlight {:language "clojure"} (str code)]]]
+        [:pre [:code (pr-str code)]]
+        [:pre (str "=> " v)]]])))
+
+(defn assertions []
+  (let [completed? @(subscribe [:assertions-completed?])
+        assert     #(dispatch [:assertion %1 %2])]
+    [:div.card
+     [:h3 "Assertions"]
+     [:i.ion-checkmark-round.checkmark {:class (if completed? "succeeded" "failed")}]
+     [:p (str "Clojure is a dialect of lisp and in lisp we mostly work with lists."
+              " A list is defined using parenthesis and if the first element of the"
+              " list is a symbol, the list will be evaluated as a function."
+              " In the assertions below you can see this in action. In the first assertion"
+              " `=` is the function-name and the following elements of the list is"
+              " it's arguments")]
+     [koan (str "Only real truths") '(= :_ true) assert]
+     [koan (str "Same for falsehoods") '(= :_ false) assert]
+     [koan (str "More than the first") '(> :_ 1) assert]
+     [koan (str "You can compare two of the same type") '(= :_ (keyword "bar")) assert]]))
+
+(defn data-structures []
+  (let [completed? @(subscribe [:data-structures-completed?])
+        assert     #(dispatch [:data-structure %1 %2])]
+    [:div.card
+        [:h3 "Data-structures"]
+        [:i.ion-checkmark-round.checkmark {:class (if completed? "succeeded" "failed")}]
+        [:p (str "As mentioned, lists are very common in Clojure. But there are many "
+                 "other valuable data-structures you can play with.")]
+        [:div
+         [koan (str "Vectors are formed using square-brackets") '(= :_ (first [1 1 2 2 3 3 4 4 5 5])) assert]
+         [koan (str "Maps are formed using curly-braces") '(= :_ (:b {:a 1 :b 2 :c 3})) assert]
+         [:small [:em (str "Note that maps need to be balanced")]]
+         [koan (str "Sets are formed by prefixing curly-braces with a hash") '(contains? #{1 2 3 4 5} :_) assert]]]))
+
+#+END_SRC
+
+** Events
+#+BEGIN_SRC clojure :tangle src/cljs/koans/events.cljs
+(ns koans.events
+  (:require [re-frame.core :as re-frame :refer [trim-v reg-event-db reg-event-fx]]
+            [koans.state :as state]))
+
+(def interceptors
+  [trim-v])
+
+(reg-event-db
+ :initialize-db
+ (fn [_ _]
+   state/default-state))
+
+(reg-event-db
+ :set-active-panel
+ [interceptors]
+ (fn [db [active-panel]]
+   (assoc db :active-panel active-panel)))
+
+(reg-event-db
+ :assertion
+ [interceptors]
+ (fn [db [k v]]
+   (assoc-in db [:assertions k] v)))
+
+(reg-event-db
+ :data-structure
+ [interceptors]
+ (fn [db [k v]]
+   (assoc-in db [:data-structures k] v)))
+#+END_SRC
+
+** Subscriptions
+#+BEGIN_SRC clojure :tangle src/cljs/koans/subs.cljs
+(ns koans.subs
+  (:require [re-frame.core :as re-frame :refer [reg-sub]]
+            [clojure.spec :as s]
+            [koans.utils :as u]))
+
+(reg-sub
+ :active-panel
+ (fn [db]
+   (:active-panel db)))
+
+
+;; Assertions
+
+(reg-sub
+ :assertions
+ (fn [db]
+   (vals (:assertions db))))
+
+(reg-sub
+ :assertions-completed?
+ :<- [:assertions]
+ (fn [assertions]
+   (empty? (remove true? assertions))))
+
+
+;; Data-structures
+
+(reg-sub
+ :data-structures
+ (fn [db]
+   (vals (:data-structures db))))
+
+(reg-sub
+ :data-structures-completed?
+ :<- [:data-structures]
+ (fn [data-structures]
+   (empty? (remove true? data-structures))))
+
+
+;; Stats
+
+(reg-sub
+ :koans
+ :<- [:assertions]
+ :<- [:data-structures]
+ (fn [& koans]
+   (->> koans
+        (flatten)
+        (remove #(not (boolean? %))))))
+
+(reg-sub
+ :completed-koans
+ :<- [:koans]
+ (fn [koans]
+   (remove false? koans)))
+
+(reg-sub
+ :percent-completed
+ :<- [:koans]
+ :<- [:completed-koans]
+ (fn [[total-koans completed-koans]]
+   (int (* (/ (count completed-koans) (count total-koans)) 100))))
+#+END_SRC
+
+** Sprinkle some Styles
+
+I typically use [[https://github.com/noprompt/garden][garden]], but I've chosen straight up css for now, to
+keep it simple. But feel free to read up on [[https://github.com/noprompt/garden][garden]], it's not just a
+pre-processor, it gives you the complete power of clojure in your
+styles-sheets!
+
+#+BEGIN_SRC css :tangle resources/public/css/screen.css
+
+/* Base */
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+html {
+  font-family: Open sans, Helvetica, Sans serif;
+  font-size: 62.5%;
+}
+
+body {
+  font-size: 1.8em;
+  font-weight: 100;
+  margin: 0;
+  overflow: hidden;
+}
+
+h1,
+h2 {
+  font-weight: 100;
+}
+
+a {
+  color: rgb(254,197,52);
+}
+
+.text-width {
+  max-width: 70rem;
+}
+
+i[class^=ion] {
+  color: rgb(254,197,52);
+  font-size: 5rem;
+  margin: 1rem;
+}
+
+.checkmark {
+  position: absolute;
+  right: -8rem;
+  top: 3rem;
+  transition: .5s ease;
+}
+
+    .failed {
+      transform: scale(0);
+      opacity: 0;
+    }
+
+    .succeeded {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+.card {
+  box-sizing: border-box;
+  box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.3);
+  margin: 4rem;
+  max-width: 80rem;
+  position: relative;
+}
+
+.container {
+  height: 100%;
+  max-width: 100rem;
+  margin: 0 auto;
+  padding-left: 2rem;
+  padding-right: 2rem;
+  text-align: left;
+}
+
+.completed {
+  background: rgb(254,197,52);
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 0.5rem;
+  z-index: 10;
+  transition: 1s ease;
+}
+
+.koan {
+  margin-top: 2em;
+}
+
+.code {
+  background-color: rgb(205,235,250);
+  border-radius: 0.4rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+  transition: background-color .5s ease;
+}
+.code code.hljs {
+  background-color: transparent;
+}
+
+.code.success {
+  background-color: rgb(205,250,235);
+}
+
+.code pre {
+  margin: 0;
+  padding: 0.5rem 1rem;
+}
+
+.code pre + pre {
+  background: rgba(255,255,255,0.5);
+  font-size: 0.7em;
+}
+
+footer {
+  padding: 4rem;
+  text-align: center;
+}
+
+/* Utility-classes */
+
+.flex {
+  display: flex;
+  flex-wrap: wrap;
+  flex-direction: row;
+}
+
+.flex.no-wrap {
+  flex-wrap: none;
+}
+
+.flex.column {
+  flex-direction: column;
+}
+
+.fill {
+  flex: 1;
+}
+
+.fill-1 {
+  flex: 1;
+}
+
+.fill-3 {
+  flex: 2;
+}
+
+.fill-3 {
+  flex: 3;
+}
+
+.align-center {
+  align-items: center;
+}
+
+.align-stretch {
+  align-items: stretch;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.justify-space-between {
+  justify-content: space-between;
+}
+
+/* Theme */
+
+#app {
+  background: linear-gradient(135deg,rgb(100,175,245), rgb(47,63,224));
+  background-attachment: fixed;
+  overflow: auto;
+  color: white;
+  text-align: center;
+}
+
+#app > div {
+  margin-top: 2rem;
+  margin-bottom: 8rem;
+}
+
+.card {
+  background: white;
+  border-radius: 0.8rem;
+  color: rgb(50,50,50);
+  padding: 2rem;
+}
+
+
+/* Trumps */
+
+#+END_SRC
+** Boilerplate html
+#+BEGIN_SRC html :tangle resources/public/index.html
+<!doctype>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>koans</title>
+  <!-- <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.9.0/styles/default.min.css"> -->
+  <link rel="stylesheet" href="https://code.ionicframework.com/ionicons/2.0.1/css/ionicons.min.css">
+  <link rel="stylesheet" href="css/screen.css">
+</head>
+<body>
+  <div id="app"></div>
+  <script src="js/compiled/app.js"></script>
+  <script>koans.core.init()</script>
+</body>
+</html>
+#+END_SRC
+** Manifest
+
+When using Leiningen we have to create a project-manifest with all of
+the dependencies and procedures for building. Note that there's a new
+kid on the block named `boot` that offers a more programmatic approach
+to this problem which often is a better fit.
+
+#+BEGIN_SRC clojure :tangle project.clj
+(defproject koans "0.0.1"
+  :description "Clojure(Script) for dummies"
+
+  :dependencies [[org.clojure/clojure "1.9.0-alpha14"]
+                 [org.clojure/clojurescript "1.9.473"]
+                 [org.clojure/test.check "0.9.0"]
+                 ;; [cljsjs/react-highlight "1.0.5-0"]
+                 [nightlight "1.6.3"]
+                 [re-frame "0.9.2"]
+                 [re-frisk "0.3.2"]
+                 [secretary "1.2.3"]
+                 [ns-tracker "0.3.1"]
+                 [reagent "0.6.0"]]
+
+  :plugins [[lein-cljsbuild "1.1.4"]]
+
+  :source-paths ["src/clj" "src/cljs"]
+
+  ;; These paths will be removed by running `lein clean`
+  :clean-targets ^{:protect false} ["target"
+                                    "resources/public/css"
+                                    "resources/public/js/compiled"]
+
+  :figwheel {:css-dirs    ["resources/public/css"]}
+
+  :repl-options {:nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}
+
+  :profiles
+  {:dev
+   {:dependencies [[binaryage/devtools "0.9.1"]
+                   [figwheel-sidecar "0.5.9"]
+                   [com.cemerick/piggieback "0.2.1"]]
+
+    :plugins [[lein-figwheel "0.5.9"]
+              [lein-doo "0.1.7"]
+              ;; `lein nightlight --port 4000  --url "http://localhost:3000` to start an editor on the port 4000
+              [nightlight/lein-nightlight "1.6.3"]]}}
+
+  :cljsbuild
+  {:builds
+
+   ;; `lein figwheel dev` for pretty-printing, source-maps and code hot-loading
+   [{:id           "dev"
+     :source-paths ["src/cljs"]
+     :figwheel     {:on-jsload "koans.core/mount-root"}
+     :compiler     {:main                 koans.core
+                    :output-to            "resources/public/js/compiled/app.js"
+                    :output-dir           "resources/public/js/compiled/out"
+                    :asset-path           "js/compiled/out"
+                    :source-map-timestamp true
+                    :preloads             [devtools.preload]
+                    :external-config      {:devtools/config {:features-to-install :all}}}}
+
+    ;; `lein cljsbuild min` for a production-build with dead-code removal and minification
+    {:id           "min"
+     :source-paths ["src/cljs"]
+     :compiler     {:main            koans.core
+                    :output-to       "resources/public/js/compiled/app.js"
+                    :optimizations   :advanced
+                    :closure-defines {goog.DEBUG false}
+                    :pretty-print    false}}
+
+    ;; `lein test once` will build without optimizations and run all the tests specified in the runner
+    {:id           "test"
+     :source-paths ["src/cljs" "test/cljs"]
+     :compiler     {:main          koans.runner
+                    :output-to     "resources/public/js/compiled/test.js"
+                    :output-dir    "resources/public/js/compiled/test/out"
+                    :optimizations :none}}]})
+#+END_SRC
