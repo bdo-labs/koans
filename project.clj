@@ -4,7 +4,7 @@
   :dependencies [[org.clojure/clojure "1.9.0-alpha14"]
                  [org.clojure/clojurescript "1.9.473"]
                  [org.clojure/test.check "0.9.0"]
-                 ;; [cljsjs/react-highlight "1.0.5-0"]
+                 [cljsjs/react-highlight "1.0.5-0"]
                  [nightlight "1.6.3"]
                  [re-frame "0.9.2"]
                  [re-frisk "0.3.2"]

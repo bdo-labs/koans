@@ -6,9 +6,7 @@
             [koans.routes :as routes]
             [koans.views :as views]
             [re-frisk.core :refer [enable-re-frisk!]]
-            [nightlight.repl-server]
-            ;; [cljsjs.react-highlight]
-            ))
+            [nightlight.repl-server]))
 
 (def debug?
   ^boolean js/goog.DEBUG)

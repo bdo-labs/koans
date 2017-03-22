@@ -34,7 +34,7 @@ JavaScript-Engine. There are very few differences between the two
 languages though, so you can mostly run your code in both lands. You
 can do so by using the file-extension =cljc=, which stands for
 Clojure-Common. One advantage of doing so, is that you can run all of
-your tests on the JVM with somewhat better performance than you would
+your test-passes on the JVM with somewhat better performance than you would
 get, say in a browser.  For this session, we will stick to the regular
 cljs-format for the sake of simplicity.  We will also be using
 =figwheel= which will hot-load our code while keeping our state in-tact
@@ -50,15 +50,12 @@ some code.
 lein figwheel dev
 #+END_SRC
 
-I've strapped in the =nightlight= editor for convenience, so
+I've strapped on the =nightlight= editor for convenience, so
 we can just get started without tweaking any particular IDE.
 
 #+BEGIN_SRC shell
 lein nightlight --port 4000
 #+END_SRC
-
-What follows beyond this line is the actual code, with some very light
-reading :)
 
 * Source
 
@@ -81,9 +78,7 @@ usually where you initialize the application itself.
             [koans.routes :as routes]
             [koans.views :as views]
             [re-frisk.core :refer [enable-re-frisk!]]
-            [nightlight.repl-server]
-            ;; [cljsjs.react-highlight]
-            ))
+            [nightlight.repl-server]))
 
 (def debug?
   ^boolean js/goog.DEBUG)
@@ -108,17 +103,26 @@ usually where you initialize the application itself.
 
 ** Application State
 
+For this particular application, we don't really need much initial
+data, but if we did, this would be the place to put it. It's also the
+place I would do validation of that data, if any.
+
 #+BEGIN_SRC clojure :tangle src/cljs/koans/state.cljs
 (ns koans.state
   (:require [clojure.test.check.generators :as gen]
             [clojure.spec :as s]))
 
 (def default-state
-  {:assertions      {}
-   :data-structures {}})
+  {:assertions       {}
+   :data-structures  {}
+   :lazy-sequences   {}
+   :threading-macros {}})
 #+END_SRC
 
 ** Routes
+
+Again, this is a very crude SPA, so there's really no routing going
+on, but you can kind of see how you would model it from the code below.
 
 #+BEGIN_SRC clojure :tangle src/cljs/koans/routes.cljs
 (ns koans.routes
@@ -148,17 +152,22 @@ usually where you initialize the application itself.
 #+END_SRC
 
 ** Utils
+   
+In every Clojure project to this point, I've had to use some general
+utility-functions that's not included in the "Std-lib", so I tend to
+start every project with a utils-file.
 
 #+BEGIN_SRC clojure :tangle src/cljs/koans/utils.cljs
 (ns koans.utils
-  (:require [reagent.core :as reagent]))
+  (:require [reagent.core :as reagent]
+            [cljsjs.react-highlight]))
 
 (defn log [& args]
   (do (apply js/console.log args)
       args))
 
-;; (def highlight
-;;   (reagent/adapt-react-class js/Highlight))
+(def highlight
+  (reagent/adapt-react-class js/Highlight))
 #+END_SRC
 
 ** Views
@@ -192,6 +201,8 @@ usually where you initialize the application itself.
          [:em (str "Ohh! And just replace `:_` with whatever value you think is correct")]]]
        [koans/assertions]
        [koans/data-structures]
+       [koans/lazy-sequences]
+       [koans/threading-macros]
        [footer]])))
 
 ;; main
@@ -209,9 +220,13 @@ usually where you initialize the application itself.
 
 ** Koans
 
+The Koans themselves along with some ClojureScript inception. You can
+see that we compile ClojureScript-code from ClojureScript ;)
+
 #+BEGIN_SRC clojure :tangle src/cljs/koans/koans.cljs
 (ns koans.koans
   (:require [re-frame.core :as re-frame :refer [subscribe dispatch]]
+            [reagent.core :as reagent]
             [cljs.js :as cljs]
             [koans.utils :as u]))
 
@@ -229,8 +244,8 @@ usually where you initialize the application itself.
       [:div.koan
        [:p [:small intro]]
        [:div.code {:class (if v "success" "")}
-        ;; [:pre [:code [u/highlight {:language "clojure"} (str code)]]]
-        [:pre [:code (pr-str code)]]
+        [u/highlight {:language "clojure"} (str code)]
+        ;; [:pre [:code (pr-str code)]]
         [:pre (str "=> " v)]]])))
 
 (defn assertions []
@@ -259,10 +274,53 @@ usually where you initialize the application itself.
         [:p (str "As mentioned, lists are very common in Clojure. But there are many "
                  "other valuable data-structures you can play with.")]
         [:div
-         [koan (str "Vectors are formed using square-brackets") '(= :_ (first [1 1 2 2 3 3 4 4 5 5])) assert]
-         [koan (str "Maps are formed using curly-braces") '(= :_ (:b {:a 1 :b 2 :c 3})) assert]
+         [koan (str "Vectors are formed using square-brackets. [:a :b :c :d]") '(= :_ (first [1 1 2 2 3 3 4 4 5 5])) assert]
+         [koan (str "Maps are formed using curly-braces. {:hello \"world\" :foo \"bar\"}") '(= :_ (:b {:a 1 :b 2 :c 3})) assert]
          [:small [:em (str "Note that maps need to be balanced")]]
-         [koan (str "Sets are formed by prefixing curly-braces with a hash") '(contains? #{1 2 3 4 5} :_) assert]]]))
+         [koan (str "Sets are formed by prefixing curly-braces with a hash. #{:a 1 :b :c 3}") '(contains? #{1 2 3 4 5} :_) assert]
+         [:small [:em (str "Sets always contain unique values")]]]
+     [:div
+      [:p (str "These are all collections and collections share a bit of API that's"
+               " used for testing/verification and some modification."
+               " Although most manipulation is specific to each data-type.")]
+      [:p (str "Sequential data-structures are called Seq in Clojure, these share even more API.")]]]))
+
+(defn lazy-sequences []
+  (let [completed? @(subscribe [:lazy-sequences-completed?])
+        assert     #(dispatch [:lazy-sequence %1 %2])]
+    [:div.card
+     [:h3 "Lazy Sequences"]
+     [:i.ion-checkmark-round.checkmark {:class (if completed? "succeeded" "failed")}]
+     [:p (str "Languages are often separated into categories of lazy or eager evaluation. "
+              "As you might have guessed, Clojure falls into the latter. "
+              "What that means, is we can have data-structures that contain an endless amount "
+              "of items, but only the ones we observe are taken into account.")]
+     [:div
+      [koan (str "We can make small sequences") '(= :_ (take 2 (range 3))) assert]
+      [koan (str "Or huge at the same cost") '(= :_ (take 2 (range 999999999999))) assert]]
+     [:div
+      [koan (str "They can also be a product of our own structures") '(= :_ (nth (cycle [:a :b :c]) 3)) assert]]]))
+
+(defn threading-macros []
+  (let [completed? @(subscribe [:threading-macros-completed?])
+        assert     #(dispatch [:threading-macro %1 %2])]
+    [:div.card
+     [:h3 "Threading Macros"]
+     [:i.ion-checkmark-round.checkmark {:class (if completed? "succeeded" "failed")}]
+     [:p (str "Threading is an eloquent solution to making code more readable."
+              "It's API is also fairly similar to that of transducers, so we can "
+              "in many cases also gain heavily in performance. Yay!")]
+     [:div
+      [koan (str "Thread first -> will direct the output of fn to the first argument of the next fn")
+       '(= :_ (-> [:a :b :c :d] (nth 1))) assert]
+      [koan (str "Thread last ->> will direct the output of fn to the last argument of the next fn")
+       '(= :_ (->> [:a :b :c :d] (mapv name))) assert]
+      ]
+     [:div
+      [:p (str "These two are the most commonly used threading-macros. Clojure also "
+               "has a few special ones for other common use-cases. These include"
+               "some-> some->> as-> cond-> cond->>")]
+      [:p (str "I'm not going to cover transducers in-depth, but feel free to ask ;)")]]]))
 
 #+END_SRC
 
@@ -297,9 +355,22 @@ usually where you initialize the application itself.
  [interceptors]
  (fn [db [k v]]
    (assoc-in db [:data-structures k] v)))
+
+(reg-event-db
+ :threading-macro
+ [interceptors]
+ (fn [db [k v]]
+   (assoc-in db [:threading-macros k] v)))
+
+(reg-event-db
+ :lazy-sequence
+ [interceptors]
+ (fn [db [k v]]
+   (assoc-in db [:lazy-sequence k] v)))
 #+END_SRC
 
 ** Subscriptions
+
 #+BEGIN_SRC clojure :tangle src/cljs/koans/subs.cljs
 (ns koans.subs
   (:require [re-frame.core :as re-frame :refer [reg-sub]]
@@ -340,6 +411,34 @@ usually where you initialize the application itself.
    (empty? (remove true? data-structures))))
 
 
+;; Threading-macros
+
+(reg-sub
+ :threading-macros
+ (fn [db]
+   (vals (:threading-macros db))))
+
+(reg-sub
+ :threading-macros-completed?
+ :<- [:threading-macros]
+ (fn [threading-macros]
+   (empty? (remove true? threading-macros))))
+
+
+;; lazy-sequences
+
+(reg-sub
+ :lazy-sequences
+ (fn [db]
+   (vals (:lazy-sequences db))))
+
+(reg-sub
+ :lazy-sequences-completed?
+ :<- [:lazy-sequences]
+ (fn [lazy-sequences]
+   (empty? (remove true? lazy-sequences))))
+
+
 ;; Stats
 
 (reg-sub
@@ -373,6 +472,7 @@ pre-processor, it gives you the complete power of clojure in your
 styles-sheets!
 
 #+BEGIN_SRC css :tangle resources/public/css/screen.css
+@import "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.10.0/styles/github.min.css";
 
 /* Base */
 
@@ -575,13 +675,14 @@ footer {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width">
   <title>koans</title>
-  <!-- <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.9.0/styles/default.min.css"> -->
   <link rel="stylesheet" href="https://code.ionicframework.com/ionicons/2.0.1/css/ionicons.min.css">
   <link rel="stylesheet" href="css/screen.css">
 </head>
 <body>
   <div id="app"></div>
   <script src="js/compiled/app.js"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.4.0/languages/clojure.min.js"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.4.0/languages/clojure-repl.min.js"></script>
   <script>koans.core.init()</script>
 </body>
 </html>
@@ -591,7 +692,7 @@ footer {
 When using Leiningen we have to create a project-manifest with all of
 the dependencies and procedures for building. Note that there's a new
 kid on the block named `boot` that offers a more programmatic approach
-to this problem which often is a better fit.
+to this problem which often would be a better fit.
 
 #+BEGIN_SRC clojure :tangle project.clj
 (defproject koans "0.0.1"
@@ -600,7 +701,7 @@ to this problem which often is a better fit.
   :dependencies [[org.clojure/clojure "1.9.0-alpha14"]
                  [org.clojure/clojurescript "1.9.473"]
                  [org.clojure/test.check "0.9.0"]
-                 ;; [cljsjs/react-highlight "1.0.5-0"]
+                 [cljsjs/react-highlight "1.0.5-0"]
                  [nightlight "1.6.3"]
                  [re-frame "0.9.2"]
                  [re-frisk "0.3.2"]

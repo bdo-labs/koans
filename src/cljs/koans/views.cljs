@@ -26,6 +26,8 @@
          [:em (str "Ohh! And just replace `:_` with whatever value you think is correct")]]]
        [koans/assertions]
        [koans/data-structures]
+       [koans/lazy-sequences]
+       [koans/threading-macros]
        [footer]])))
 
 ;; main

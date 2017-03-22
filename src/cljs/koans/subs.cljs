@@ -37,6 +37,34 @@
    (empty? (remove true? data-structures))))
 
 
+;; Threading-macros
+
+(reg-sub
+ :threading-macros
+ (fn [db]
+   (vals (:threading-macros db))))
+
+(reg-sub
+ :threading-macros-completed?
+ :<- [:threading-macros]
+ (fn [threading-macros]
+   (empty? (remove true? threading-macros))))
+
+
+;; lazy-sequences
+
+(reg-sub
+ :lazy-sequences
+ (fn [db]
+   (vals (:lazy-sequences db))))
+
+(reg-sub
+ :lazy-sequences-completed?
+ :<- [:lazy-sequences]
+ (fn [lazy-sequences]
+   (empty? (remove true? lazy-sequences))))
+
+
 ;; Stats
 
 (reg-sub

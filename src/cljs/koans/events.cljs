@@ -27,3 +27,15 @@
  [interceptors]
  (fn [db [k v]]
    (assoc-in db [:data-structures k] v)))
+
+(reg-event-db
+ :threading-macro
+ [interceptors]
+ (fn [db [k v]]
+   (assoc-in db [:threading-macros k] v)))
+
+(reg-event-db
+ :lazy-sequence
+ [interceptors]
+ (fn [db [k v]]
+   (assoc-in db [:lazy-sequence k] v)))

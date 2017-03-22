@@ -3,5 +3,7 @@
             [clojure.spec :as s]))
 
 (def default-state
-  {:assertions      {}
-   :data-structures {}})
+  {:assertions       {}
+   :data-structures  {}
+   :lazy-sequences   {}
+   :threading-macros {}})
