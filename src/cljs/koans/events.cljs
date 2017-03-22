@@ -38,4 +38,4 @@
  :lazy-sequence
  [interceptors]
  (fn [db [k v]]
-   (assoc-in db [:lazy-sequence k] v)))
+   (assoc-in db [:lazy-sequences k] v)))
